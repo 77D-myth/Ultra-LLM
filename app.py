@@ -115,3 +115,20 @@ async def search_web(query):
     except Exception as e:
         print(f"Search error: {str(e)}")
         return []
+# Add to imports
+import sys
+
+# Add test mode handling
+if "--test" in sys.argv:
+    print("🚨 Running in test mode")
+    MODEL_PATH = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+    try:
+        llm = Llama(model_path=MODEL_PATH, n_ctx=128, n_threads=2)
+        print("✅ Model loaded successfully")
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ Test failed: {str(e)}")
+        sys.exit(1)
+else:
+    # Original initialization
+    llm = Llama(model_path=MODEL_PATH, n_ctx=512, n_threads=LLM_THREADS)
