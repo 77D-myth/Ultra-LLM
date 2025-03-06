@@ -1,5 +1,7 @@
 # ultra_llm.py
 import asyncio
+import os
+import sys
 from aiohttp import web
 from llama_cpp import Llama
 import aiohttp
@@ -8,10 +10,27 @@ import json
 # ======== Configuration ========
 MODEL_PATH = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"  # <1GB model
 LLM_THREADS = 8  # Use all CPU cores
-SEARCH_API = "https://searxng.example.com/search?q={query}&format=json"  # Self-hosted search engine
+SEARCH_API = os.getenv("SEARCH_API", "https://your-searx-instance.com/search?q={query}&format=json")
 
-# ======== Initialize LLM ========
-llm = Llama(model_path=MODEL_PATH, n_ctx=512, n_threads=LLM_THREADS)
+# ======== Model Validation ========
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"""
+    Model file missing! Download with:
+    wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/{MODEL_PATH}
+    """)
+
+# ======== Test Mode Handling ========
+if "--test" in sys.argv:
+    print("🚨 Running in test mode")
+    try:
+        llm = Llama(model_path=MODEL_PATH, n_ctx=128, n_threads=2)
+        print("✅ Model loaded successfully")
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ Test failed: {str(e)}")
+        sys.exit(1)
+else:
+    llm = Llama(model_path=MODEL_PATH, n_ctx=512, n_threads=LLM_THREADS)
 
 # ======== Async Web Server ========
 async def handle(request):
@@ -35,10 +54,16 @@ async def generate(request):
     })
 
 async def search_web(query):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(SEARCH_API.format(query=query)) as resp:
-            results = await resp.json()
-            return [{"title": r.get('title',''), "url": r.get('url','')} for r in results.get('results', [])]
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(SEARCH_API.format(query=query), timeout=2) as resp:
+                if resp.status == 200:
+                    results = await resp.json()
+                    return [{"title": r.get('title',''), "url": r.get('url','')} for r in results.get('results', [])[:3]]
+                return []
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        return []
 
 # ======== Single-File HTML/JS ========
 HTML = """
@@ -100,35 +125,3 @@ app.router.add_post('/generate', generate)
 
 if __name__ == '__main__':
     web.run_app(app, port=8080)
-  # ... [previous code] ...
-
-SEARCH_API = os.getenv("SEARCH_API", "https://your-searx-instance.com/search?q={query}&format=json")
-
-async def search_web(query):
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(SEARCH_API.format(query=query), timeout=2) as resp:
-                if resp.status == 200:
-                    results = await resp.json()
-                    return [{"title": r.get('title',''), "url": r.get('url','')} for r in results.get('results', [])[:3]]
-                return []
-    except Exception as e:
-        print(f"Search error: {str(e)}")
-        return []
-# Add to imports
-import sys
-
-# Add test mode handling
-if "--test" in sys.argv:
-    print("🚨 Running in test mode")
-    MODEL_PATH = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-    try:
-        llm = Llama(model_path=MODEL_PATH, n_ctx=128, n_threads=2)
-        print("✅ Model loaded successfully")
-        sys.exit(0)
-    except Exception as e:
-        print(f"❌ Test failed: {str(e)}")
-        sys.exit(1)
-else:
-    # Original initialization
-    llm = Llama(model_path=MODEL_PATH, n_ctx=512, n_threads=LLM_THREADS)
