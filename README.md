@@ -38,3 +38,8 @@ SEARCH_API="https://your.search/api" python app.py
 
 ## License
 MIT
+## Advanced Tuning
+
+### Hardware Acceleration
+```bash
+./scripts/enable-gpu.sh
